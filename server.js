@@ -5,6 +5,7 @@ require('dotenv').config();
 const eventosRoutes = require('./src/routes/eventos.routes');
 const inscripcionesRoutes = require('./src/routes/inscripciones.routes');
 const favoritosRoutes = require('./src/routes/favoritos.routes');
+const authRoutes = require('./src/routes/auth.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use('/api/eventos', eventosRoutes);
 app.use('/api/inscripciones', inscripcionesRoutes);
 app.use('/api/favoritos', favoritosRoutes);
+app.use('/api/auth', authRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
