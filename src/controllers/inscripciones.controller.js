@@ -64,4 +64,30 @@ const getInscripcionesByUsuario = (req, res) => {
   }
 };
 
-module.exports = { createInscripcion, getInscripcionesByUsuario };
+const cancelarInscripcion = (req, res) => {
+  try {
+    const { evento_id, usuario_id } = req.params;
+
+    const inscripcion = db.prepare(
+      'SELECT * FROM inscripciones WHERE evento_id = ? AND usuario_id = ?'
+    ).get(evento_id, usuario_id);
+
+    if (!inscripcion) {
+      return res.status(404).json({ ok: false, message: 'Inscripción no encontrada' });
+    }
+
+    db.prepare(
+      'DELETE FROM inscripciones WHERE evento_id = ? AND usuario_id = ?'
+    ).run(evento_id, usuario_id);
+
+    db.prepare(
+      'UPDATE eventos SET cupos_disponibles = cupos_disponibles + 1 WHERE id = ?'
+    ).run(evento_id);
+
+    res.json({ ok: true, message: 'Inscripción cancelada exitosamente' });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: 'Error al cancelar inscripción' });
+  }
+};
+
+module.exports = { createInscripcion, getInscripcionesByUsuario, cancelarInscripcion };
