@@ -1,7 +1,6 @@
-const db = require('../../database/db');
+const pool = require('../../database/db');
 
-// Agregar evento a favoritos
-const addFavorito = (req, res) => {
+const addFavorito = async (req, res) => {
   try {
     const { evento_id, usuario_id } = req.body;
 
@@ -9,16 +8,15 @@ const addFavorito = (req, res) => {
       return res.status(400).json({ ok: false, message: 'Faltan campos obligatorios' });
     }
 
-    // Verificar que el evento existe
-    const evento = db.prepare('SELECT * FROM eventos WHERE id = ?').get(evento_id);
-    if (!evento) {
+    const evento = await pool.query('SELECT * FROM eventos WHERE id = $1', [evento_id]);
+    if (evento.rows.length === 0) {
       return res.status(404).json({ ok: false, message: 'Evento no encontrado' });
     }
 
-    db.prepare(`
-      INSERT OR IGNORE INTO favoritos (evento_id, usuario_id)
-      VALUES (?, ?)
-    `).run(evento_id, usuario_id);
+    await pool.query(
+      'INSERT INTO favoritos (evento_id, usuario_id) VALUES ($1, $2) ON CONFLICT (evento_id, usuario_id) DO NOTHING',
+      [evento_id, usuario_id]
+    );
 
     res.status(201).json({ ok: true, message: 'Agregado a favoritos' });
   } catch (error) {
@@ -26,14 +24,14 @@ const addFavorito = (req, res) => {
   }
 };
 
-// Eliminar evento de favoritos
-const removeFavorito = (req, res) => {
+const removeFavorito = async (req, res) => {
   try {
     const { evento_id, usuario_id } = req.params;
 
-    db.prepare(
-      'DELETE FROM favoritos WHERE evento_id = ? AND usuario_id = ?'
-    ).run(evento_id, usuario_id);
+    await pool.query(
+      'DELETE FROM favoritos WHERE evento_id = $1 AND usuario_id = $2',
+      [evento_id, usuario_id]
+    );
 
     res.json({ ok: true, message: 'Eliminado de favoritos' });
   } catch (error) {
@@ -41,20 +39,20 @@ const removeFavorito = (req, res) => {
   }
 };
 
-// Obtener favoritos de un usuario
-const getFavoritosByUsuario = (req, res) => {
+const getFavoritosByUsuario = async (req, res) => {
   try {
     const { usuario_id } = req.params;
 
-    const favoritos = db.prepare(`
-      SELECT f.*, e.titulo, e.fecha, e.hora, e.lugar, e.categoria, e.imagen_url
-      FROM favoritos f
-      JOIN eventos e ON f.evento_id = e.id
-      WHERE f.usuario_id = ?
-      ORDER BY f.created_at DESC
-    `).all(usuario_id);
+    const result = await pool.query(
+      `SELECT f.*, e.titulo, e.fecha, e.hora, e.lugar, e.categoria, e.imagen_url
+       FROM favoritos f
+       JOIN eventos e ON f.evento_id = e.id
+       WHERE f.usuario_id = $1
+       ORDER BY f.created_at DESC`,
+      [usuario_id]
+    );
 
-    res.json({ ok: true, data: favoritos });
+    res.json({ ok: true, data: result.rows });
   } catch (error) {
     res.status(500).json({ ok: false, message: 'Error al obtener favoritos' });
   }

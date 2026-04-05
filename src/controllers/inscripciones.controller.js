@@ -1,7 +1,6 @@
-const db = require('../../database/db');
+const pool = require('../../database/db');
 
-// Inscribir usuario a un evento
-const createInscripcion = (req, res) => {
+const createInscripcion = async (req, res) => {
   try {
     const { evento_id, usuario_id, usuario_nombre, usuario_correo } = req.body;
 
@@ -9,35 +8,32 @@ const createInscripcion = (req, res) => {
       return res.status(400).json({ ok: false, message: 'Faltan campos obligatorios' });
     }
 
-    // Verificar que el evento existe
-    const evento = db.prepare('SELECT * FROM eventos WHERE id = ?').get(evento_id);
-    if (!evento) {
+    const evento = await pool.query('SELECT * FROM eventos WHERE id = $1', [evento_id]);
+    if (evento.rows.length === 0) {
       return res.status(404).json({ ok: false, message: 'Evento no encontrado' });
     }
 
-    // Verificar que hay cupos disponibles
-    if (evento.cupos_disponibles <= 0) {
+    if (evento.rows[0].cupos_disponibles <= 0) {
       return res.status(400).json({ ok: false, message: 'No hay cupos disponibles' });
     }
 
-    // Verificar que el usuario no esté ya inscrito
-    const yaInscrito = db.prepare(
-      'SELECT * FROM inscripciones WHERE evento_id = ? AND usuario_id = ?'
-    ).get(evento_id, usuario_id);
-
-    if (yaInscrito) {
+    const yaInscrito = await pool.query(
+      'SELECT * FROM inscripciones WHERE evento_id = $1 AND usuario_id = $2',
+      [evento_id, usuario_id]
+    );
+    if (yaInscrito.rows.length > 0) {
       return res.status(400).json({ ok: false, message: 'Ya estás inscrito en este evento' });
     }
 
-    // Crear inscripción y reducir cupo
-    db.prepare(`
-      INSERT INTO inscripciones (evento_id, usuario_id, usuario_nombre, usuario_correo)
-      VALUES (?, ?, ?, ?)
-    `).run(evento_id, usuario_id, usuario_nombre, usuario_correo);
+    await pool.query(
+      'INSERT INTO inscripciones (evento_id, usuario_id, usuario_nombre, usuario_correo) VALUES ($1, $2, $3, $4)',
+      [evento_id, usuario_id, usuario_nombre, usuario_correo]
+    );
 
-    db.prepare(
-      'UPDATE eventos SET cupos_disponibles = cupos_disponibles - 1 WHERE id = ?'
-    ).run(evento_id);
+    await pool.query(
+      'UPDATE eventos SET cupos_disponibles = cupos_disponibles - 1 WHERE id = $1',
+      [evento_id]
+    );
 
     res.status(201).json({ ok: true, message: 'Inscripción exitosa' });
   } catch (error) {
@@ -45,44 +41,46 @@ const createInscripcion = (req, res) => {
   }
 };
 
-// Obtener inscripciones de un usuario
-const getInscripcionesByUsuario = (req, res) => {
+const getInscripcionesByUsuario = async (req, res) => {
   try {
     const { usuario_id } = req.params;
 
-    const inscripciones = db.prepare(`
-      SELECT i.*, e.titulo, e.fecha, e.hora, e.lugar, e.categoria
-      FROM inscripciones i
-      JOIN eventos e ON i.evento_id = e.id
-      WHERE i.usuario_id = ?
-      ORDER BY i.fecha_inscripcion DESC
-    `).all(usuario_id);
+    const result = await pool.query(
+      `SELECT i.*, e.titulo, e.fecha, e.hora, e.lugar, e.categoria
+       FROM inscripciones i
+       JOIN eventos e ON i.evento_id = e.id
+       WHERE i.usuario_id = $1
+       ORDER BY i.fecha_inscripcion DESC`,
+      [usuario_id]
+    );
 
-    res.json({ ok: true, data: inscripciones });
+    res.json({ ok: true, data: result.rows });
   } catch (error) {
     res.status(500).json({ ok: false, message: 'Error al obtener inscripciones' });
   }
 };
 
-const cancelarInscripcion = (req, res) => {
+const cancelarInscripcion = async (req, res) => {
   try {
     const { evento_id, usuario_id } = req.params;
 
-    const inscripcion = db.prepare(
-      'SELECT * FROM inscripciones WHERE evento_id = ? AND usuario_id = ?'
-    ).get(evento_id, usuario_id);
-
-    if (!inscripcion) {
+    const inscripcion = await pool.query(
+      'SELECT * FROM inscripciones WHERE evento_id = $1 AND usuario_id = $2',
+      [evento_id, usuario_id]
+    );
+    if (inscripcion.rows.length === 0) {
       return res.status(404).json({ ok: false, message: 'Inscripción no encontrada' });
     }
 
-    db.prepare(
-      'DELETE FROM inscripciones WHERE evento_id = ? AND usuario_id = ?'
-    ).run(evento_id, usuario_id);
+    await pool.query(
+      'DELETE FROM inscripciones WHERE evento_id = $1 AND usuario_id = $2',
+      [evento_id, usuario_id]
+    );
 
-    db.prepare(
-      'UPDATE eventos SET cupos_disponibles = cupos_disponibles + 1 WHERE id = ?'
-    ).run(evento_id);
+    await pool.query(
+      'UPDATE eventos SET cupos_disponibles = cupos_disponibles + 1 WHERE id = $1',
+      [evento_id]
+    );
 
     res.json({ ok: true, message: 'Inscripción cancelada exitosamente' });
   } catch (error) {

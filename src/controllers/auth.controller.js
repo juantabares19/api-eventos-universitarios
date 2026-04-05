@@ -1,21 +1,20 @@
-const db = require('../../database/db'); // Ajusta la ruta a tu archivo de conexión
+const pool = require('../../database/db');
 
-const registrarUsuario = (req, res) => {
+const registrarUsuario = async (req, res) => {
   try {
     const { id, nombre, correo, password_hash } = req.body;
 
-    // Verificar si el correo ya existe para dar un error claro
-    const existe = db.prepare('SELECT id FROM usuarios WHERE correo = ?').get(correo);
-    if (existe) {
+    const existe = await pool.query(
+      'SELECT id FROM usuarios WHERE correo = $1', [correo]
+    );
+    if (existe.rows.length > 0) {
       return res.status(400).json({ ok: false, message: 'El correo ya está registrado' });
     }
 
-    const insert = db.prepare(`
-      INSERT INTO usuarios (id, nombre, correo, password_hash, created_at)
-      VALUES (?, ?, ?, ?, DATETIME('now'))
-    `);
-
-    insert.run(id, nombre, correo, password_hash);
+    await pool.query(
+      'INSERT INTO usuarios (id, nombre, correo, password_hash) VALUES ($1, $2, $3, $4)',
+      [id, nombre, correo, password_hash]
+    );
 
     res.status(201).json({ ok: true, message: 'Usuario creado exitosamente' });
   } catch (error) {
@@ -24,22 +23,20 @@ const registrarUsuario = (req, res) => {
   }
 };
 
-const loginUsuario = (req, res) => {
+const loginUsuario = async (req, res) => {
   try {
     const { correo, password_hash } = req.body;
 
-    // Buscamos al usuario por correo y hash de contraseña
-    const usuario = db.prepare('SELECT id, nombre, correo FROM usuarios WHERE correo = ? AND password_hash = ?').get(correo, password_hash);
+    const result = await pool.query(
+      'SELECT id, nombre, correo FROM usuarios WHERE correo = $1 AND password_hash = $2',
+      [correo, password_hash]
+    );
 
-    if (!usuario) {
+    if (result.rows.length === 0) {
       return res.status(401).json({ ok: false, message: 'Credenciales incorrectas' });
     }
 
-    res.json({ 
-      ok: true, 
-      message: 'Login exitoso', 
-      data: usuario // Enviamos los datos para que el Front los guarde en Storage
-    });
+    res.json({ ok: true, message: 'Login exitoso', data: result.rows[0] });
   } catch (error) {
     console.error(error);
     res.status(500).json({ ok: false, message: 'Error interno en el login' });
